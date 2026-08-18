@@ -200,6 +200,8 @@ class TransferEnginePy {
 
     int sendProbe(const std::string &peer_server_name);
 
+    int releaseRemoteMappings(const std::string &peer_server_name);
+
     std::shared_ptr<TransferEngine> getEngine() const { return engine_; }
 
     uintptr_t getEnginePtr() const { return (uintptr_t)engine_.get(); }

@@ -42,6 +42,8 @@ class NvlinkTransport : public Transport {
 
     static void freePinnedLocalMemory(void* addr);
 
+    int releaseRemoteMappings(uint64_t target_id);
+
    protected:
     int install(std::string& local_server_name,
                 std::shared_ptr<TransferMetadata> meta,

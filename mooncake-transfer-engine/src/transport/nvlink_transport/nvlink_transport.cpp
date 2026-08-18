@@ -433,6 +433,36 @@ NvlinkTransport::~NvlinkTransport() {
     remap_entries_.clear();
 }
 
+int NvlinkTransport::releaseRemoteMappings(uint64_t target_id) {
+    std::vector<OpenedShmEntry> to_release;
+    {
+        RWSpinlock::WriteGuard lock_guard(remap_lock_);
+        for (auto it = remap_entries_.begin(); it != remap_entries_.end();) {
+            if (it->first.first == target_id) {
+                to_release.push_back(it->second);
+                it = remap_entries_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    uint64_t released_bytes = 0;
+    for (auto &entry : to_release) {
+        if (use_fabric_mem_) {
+            freePinnedLocalMemory(entry.shm_addr);
+        } else {
+            cudaIpcCloseMemHandle(entry.shm_addr);
+        }
+        released_bytes += entry.length;
+    }
+
+    LOG(INFO) << "NvlinkTransport: released " << to_release.size()
+              << " imported mapping(s) of target " << target_id << ", "
+              << released_bytes << " bytes";
+    return (int)to_release.size();
+}
+
 int NvlinkTransport::install(std::string &local_server_name,
                              std::shared_ptr<TransferMetadata> metadata,
                              std::shared_ptr<Topology> topology) {

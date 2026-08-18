@@ -1130,6 +1130,34 @@ int TransferEnginePy::sendProbe(const std::string& peer_server_name) {
     return engine_->getMetadata()->sendProbe(peer_server_name);
 }
 
+int TransferEnginePy::releaseRemoteMappings(
+    const std::string& peer_server_name) {
+    if (!engine_) return -1;
+    pybind11::gil_scoped_release release;
+#ifdef USE_MNNVL
+    Transport* transport = engine_->getTransport("nvlink");
+    if (!transport) return 0;
+    auto* nvlink_transport = dynamic_cast<NvlinkTransport*>(transport);
+    if (!nvlink_transport) return 0;
+
+    Transport::SegmentHandle handle;
+    {
+        std::lock_guard<std::mutex> guard(mutex_);
+        auto it = handle_map_.find(peer_server_name);
+        if (it == handle_map_.end()) return 0;
+        handle = it->second;
+        // Gracefully shutdown, ensures new open segment to re-establish mappings
+        engine_->closeSegment(handle);
+        engine_->getMetadata()->removeSegmentDesc(peer_server_name);
+        handle_map_.erase(it);
+    }
+    return nvlink_transport->releaseRemoteMappings(handle);
+#else
+    (void)peer_server_name;
+    return 0;
+#endif
+}
+
 namespace py = pybind11;
 
 // Implementation of coro_rpc_interface binding function
@@ -1294,6 +1322,15 @@ PYBIND11_MODULE(engine, m) {
                  "Send a JSON-RPC probe to peer to verify reachability. "
                  "Returns 0 on success, non-zero on failure. Used by "
                  "SGLang's failed-session blacklist recovery.")
+            .def("release_remote_mappings",
+                 &TransferEnginePy::releaseRemoteMappings,
+                 py::arg("peer_server_name"),
+                 "Release every NVLink/MNNVL mapping imported from one peer, "
+                 "dropping the last reference that kept the peer's physical "
+                 "pages alive after it died. Returns the number of released "
+                 "mappings; 0 when nothing was imported or the deployment "
+                 "does not use the NVLink transport. A later transfer to the "
+                 "same peer re-imports transparently.")
             .def("get_engine", &TransferEnginePy::getEngine)
             .def("get_engine_ptr", &TransferEnginePy::getEnginePtr);
 
