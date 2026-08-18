@@ -450,7 +450,10 @@ int NvlinkTransport::releaseRemoteMappings(uint64_t target_id) {
     uint64_t released_bytes = 0;
     for (auto &entry : to_release) {
         if (use_fabric_mem_) {
-            freePinnedLocalMemory(entry.shm_addr);
+            cuMemUnmap((CUdeviceptr)entry.shm_addr, entry.length);
+            cuMemAddressFree((CUdeviceptr)entry.shm_addr, entry.length);
+            // Release cuMemImportFromShareableHandle's VMM ref
+            cuMemRelease(entry.handle);
         } else {
             cudaIpcCloseMemHandle(entry.shm_addr);
         }
@@ -809,6 +812,7 @@ int NvlinkTransport::relocateSharedMemoryAddress(uint64_t &dest_addr,
                     OpenedShmEntry shm_entry;
                     shm_entry.shm_addr = shm_addr;
                     shm_entry.length = entry.length;
+                    shm_entry.handle = 0;
                     remap_entries_[std::make_pair(target_id, entry.addr)] =
                         shm_entry;
                 } else if (output_buffer.size() == sizeof(CUmemFabricHandle) &&
@@ -863,6 +867,7 @@ int NvlinkTransport::relocateSharedMemoryAddress(uint64_t &dest_addr,
                     OpenedShmEntry shm_entry;
                     shm_entry.shm_addr = shm_addr;
                     shm_entry.length = entry.length;
+                    shm_entry.handle = handle;
                     remap_entries_[std::make_pair(target_id, entry.addr)] =
                         shm_entry;
                 } else {

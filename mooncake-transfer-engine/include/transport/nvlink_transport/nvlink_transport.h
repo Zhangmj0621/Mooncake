@@ -72,6 +72,7 @@ class NvlinkTransport : public Transport {
     struct OpenedShmEntry {
         void* shm_addr;
         uint64_t length;
+        CUmemGenericAllocationHandle handle;
     };
 
     std::unordered_map<std::pair<uint64_t, uint64_t>, OpenedShmEntry, PairHash>
